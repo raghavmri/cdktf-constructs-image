@@ -1,0 +1,79 @@
+name: Build and publish to docker
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "./Dockerfile"
+      - "./main.go"
+      - "./go.*"
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: docker login
+        env:
+          DOCKER_USER: ${{secrets.DOCKER_USER}}
+          DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
+        run: |
+          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+
+      - name: Pulling the latest Image from docker hub
+        run: docker pull gogamic9/cdktf-constructs-image
+
+      - name: caching the docker-image
+        uses: satackey/action-docker-layer-caching@v0.0.11
+        continue-on-error: true
+
+      - name: Build the Docker image
+        run: |
+          docker build . --file Dockerfile --tag gogamic9/cdktf-constructs-image:latest --cache-from gogamic9/cdktf-constructs-image:latest
+          docker create -ti --name latest_image gogamic9/cdktf-constructs-image:latest bash
+          docker cp latest_image:/app ./app
+          docker rm -f latest_image
+
+      - name: Zipping  the artifacts
+        run: |
+          tar -zcvf cdktf-constructs-typescript.tar.gz ./app/.gen
+          tar -zcvf cdktf-constructs-python.tar.gz ./app/imports
+
+      - name: Docker Push
+        run: |
+          docker tag gogamic9/cdktf-constructs-image:latest gogamic9/cdktf-constructs-image:$IMAGE_TAG 
+          docker push gogamic9/cdktf-constructs-image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+
+      - name: release
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          draft: false
+          prerelease: false
+          release_name: "latest"
+          tag_name: v${{ github.sha }}
+          body_path: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: upload typescript artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cdktf-constructs-typescript.tar.gz
+          asset_name: cdktf-constructs-typescript.tar.gz
+          asset_content_type: application/gzip
+
+      - name: upload python artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bin/azblogfilter.linux-amd64.tar.gz
+          asset_name: cdktf-constructs-typescript.tar.gz
+          asset_content_type: application/gzip
