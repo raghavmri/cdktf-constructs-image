@@ -9,7 +9,7 @@ FROM node:slim as terraform_installer
 WORKDIR /tf
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install wget -y && apt-get install unzip -y
-RUN wget https://releases.hashicorp.com/terraform/1.0.9/terraform_1.0.9_linux_amd64.zip
+RUN wget https://releases.hashicorp.com/terraform/1.0.9/terraform_1.0.9_linux_amd64.zip -q
 RUN unzip terraform_1.0.9_linux_amd64.zip && rm terraform_1.0.9_linux_amd64.zip
 
 
@@ -19,10 +19,15 @@ COPY --from=builder /app/gg-cli /usr/bin/gg-cli
 RUN apk add --update --no-cache openssl curl ca-certificates jq
 WORKDIR /app
 RUN yarn global add cdktf-cli@0.7.0
+RUN echo "::group::Generating Typescript Constructs"
 RUN gg-cli typescript
 RUN cdktf get
+RUN echo "::endgroup::"
+RUN echo "::group::Generating Python Constructs"
 RUN gg-cli python
 RUN cdktf get
+RUN echo "::endgroup::"
+
 
 
 FROM alpine:latest as prod
